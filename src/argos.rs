@@ -100,18 +100,16 @@ impl Argos {
             j.to_degrees()
         );
 
-        let k = ((dd * dd + UPPER_LENGTH * UPPER_LENGTH - LOWER_LENGTH * LOWER_LENGTH) / 2.
-            * UPPER_LENGTH
-            * dd)
+        let k = ((dd * dd + UPPER_LENGTH * UPPER_LENGTH - LOWER_LENGTH * LOWER_LENGTH)
+            / (2. * UPPER_LENGTH * dd))
             .acos();
         println!(
             "k = acos((dd² + Y² - Z²) / (2 * Y * dd)): {k} rad = {}°",
             k.to_degrees()
         );
 
-        let l = ((UPPER_LENGTH * UPPER_LENGTH + LOWER_LENGTH * LOWER_LENGTH - dd * dd) / 2.
-            * UPPER_LENGTH
-            * LOWER_LENGTH)
+        let l = ((UPPER_LENGTH * UPPER_LENGTH + LOWER_LENGTH * LOWER_LENGTH - dd * dd)
+            / (2. * UPPER_LENGTH * LOWER_LENGTH))
             .acos()
             .to_degrees();
         println!("l = acos((Y² + Z² - dd²) / (2 * Y * Z)): {l}°");
@@ -120,7 +118,7 @@ impl Argos {
         println!("kj = k° + j°: {kj}°");
         println!("=== leg() result: shoulder={c}°, upper_leg={kj}°, lower_leg={l}° ===");
 
-        // (c, kj, l)
-        (0., 0., 0.)
+        (-a.to_degrees(), kj, l - 90.)
+        // (0., 0., 0.)
     }
 }
