@@ -9,9 +9,16 @@ const UPPER_LENGTH: f32 = 5.5;
 const LOWER_LENGTH: f32 = 6.68;
 const BODY_WIDTH: f32 = 5.;
 const BODY_LENGTH: f32 = 20.;
+const BASE_LEG_OBJ: Vec3 = Vec3::new(0., -10., SHOULDER_LENGTH);
+const ORIGIN_FR: Vec3 = Vec3::new(BODY_LENGTH / 2., 0., BODY_WIDTH / 2.);
+const ORIGIN_FL: Vec3 = Vec3::new(BODY_LENGTH / 2., 0., -BODY_WIDTH / 2.);
+const ORIGIN_BR: Vec3 = Vec3::new(-BODY_LENGTH / 2., 0., BODY_WIDTH / 2.);
+const ORIGIN_BL: Vec3 = Vec3::new(-BODY_LENGTH / 2., 0., -BODY_WIDTH / 2.);
 
 pub struct Argos {
     xgo: XgoDog,
+    origin_pos: Vec3,
+    legs_obj: [Vec3; 4], // Relative position from base
 }
 
 impl Argos {
@@ -19,36 +26,24 @@ impl Argos {
         let mut xgo = XgoDog::builder().port_name("/dev/ttyAMA0").build().unwrap();
         xgo.load_all_motors().unwrap();
 
-        Argos { xgo }
+        Argos {
+            xgo,
+            origin_pos: Vec3::ZERO,
+            legs_obj: [Vec3::ZERO; 4],
+        }
     }
 
     pub async fn run_ms_async(&mut self) {
         let mut timer = interval(Duration::from_millis(200));
         timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-        let mut i = 0.;
-
-        let origin = Vec3::new(0., 0., 0.);
-        let ob1 = Vec3::new(0., -10., SHOULDER_LENGTH);
-        let ob2 = Vec3::new(0., -10., 0.);
-        // let ob1 = Vec3::new(-5., -10., 0.);
-        // let ob2 = Vec3::new(5., -10., 0.);
-        // self.xgo.motor_speed(50).unwrap();
-        // self.xgo.motor(Motor::ShoulderFR, 20.).unwrap(); // UP
-        // self.leg(&origin, &ob2);
-        // sleep(Duration::from_secs(3));
-        // self.xgo.motor(Motor::ShoulderFR, -10.).unwrap(); // DOWN
-        self.front_right(&origin, &ob2);
-
-        let mut diff = Instant::now();
         loop {
             timer.tick().await;
-            let uwu = Self::step1(ob1, ob2, i);
-            i = (i + 0.05) % 1.;
-            // self.front_right(&origin, &uwu);
-            let duration = diff.elapsed();
-            // println!("{i}:{duration:?}");
-            diff = Instant::now();
+
+            let instant = Instant::now();
+            self.update_model();
+            let duration = instant.elapsed();
+            println!("{duration:?}");
         }
     }
 
@@ -60,43 +55,43 @@ impl Argos {
         }
     }
 
-    pub fn single(&mut self) {
-        let origin = Vec3::new(0., 0., 0.);
-        let objective = Vec3::new(0., -10., 0.);
-        self.front_right(&origin, &objective);
-        self.front_left(&origin, &objective);
-        self.back_right(&origin, &objective);
-        self.back_left(&origin, &objective);
-        sleep(Duration::from_secs(2));
-        self.xgo.reset().unwrap();
-    }
-
-    fn front_right(&mut self, origin: &Vec3, objective: &Vec3) {
-        let (x, y, z) = self.leg(origin, objective);
-        self.xgo.motor(Motor::ShoulderFR, x).unwrap();
-        self.xgo.motor(Motor::UpperLegFR, y).unwrap();
-        self.xgo.motor(Motor::LowerLegFR, z).unwrap();
-    }
-
-    fn front_left(&mut self, origin: &Vec3, objective: &Vec3) {
-        let (x, y, z) = self.leg(origin, objective);
+    fn front_left(&mut self) {
+        let origin = self.origin_pos + ORIGIN_FL;
+        let (x, y, z) = self.leg(&origin, &self.legs_obj[0]);
         self.xgo.motor(Motor::ShoulderFL, x).unwrap();
         self.xgo.motor(Motor::UpperLegFL, y).unwrap();
         self.xgo.motor(Motor::LowerLegFL, z).unwrap();
     }
 
-    fn back_right(&mut self, origin: &Vec3, objective: &Vec3) {
-        let (x, y, z) = self.leg(origin, objective);
+    fn front_right(&mut self) {
+        let origin = self.origin_pos + ORIGIN_FR;
+        let (x, y, z) = self.leg(&origin, &self.legs_obj[1]);
+        self.xgo.motor(Motor::ShoulderFR, x).unwrap();
+        self.xgo.motor(Motor::UpperLegFR, y).unwrap();
+        self.xgo.motor(Motor::LowerLegFR, z).unwrap();
+    }
+
+    fn back_left(&mut self) {
+        let origin = self.origin_pos + ORIGIN_BL;
+        let (x, y, z) = self.leg(&origin, &self.legs_obj[2]);
+        self.xgo.motor(Motor::ShoulderBL, x).unwrap();
+        self.xgo.motor(Motor::UpperLegBL, y).unwrap();
+        self.xgo.motor(Motor::LowerLegBL, z).unwrap();
+    }
+
+    fn back_right(&mut self) {
+        let origin = self.origin_pos + ORIGIN_BR;
+        let (x, y, z) = self.leg(&origin, &self.legs_obj[3]);
         self.xgo.motor(Motor::ShoulderBR, x).unwrap();
         self.xgo.motor(Motor::UpperLegBR, y).unwrap();
         self.xgo.motor(Motor::LowerLegBR, z).unwrap();
     }
 
-    fn back_left(&mut self, origin: &Vec3, objective: &Vec3) {
-        let (x, y, z) = self.leg(origin, objective);
-        self.xgo.motor(Motor::ShoulderBL, x).unwrap();
-        self.xgo.motor(Motor::UpperLegBL, y).unwrap();
-        self.xgo.motor(Motor::LowerLegBL, z).unwrap();
+    fn update_model(&mut self) {
+        self.front_left();
+        self.front_right();
+        self.back_left();
+        self.back_right();
     }
 
     pub fn leg(&self, origin: &Vec3, objective: &Vec3) -> (f32, f32, f32) {
