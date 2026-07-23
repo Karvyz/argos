@@ -1,4 +1,4 @@
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
 use glam::Vec3;
 use tokio::time::{Instant, MissedTickBehavior, interval};
@@ -57,7 +57,8 @@ impl Argos {
 
     fn front_left(&mut self) {
         let origin = self.origin_pos + ORIGIN_FL;
-        let (x, y, z) = self.leg(&origin, &self.legs_obj[0]);
+        let objective = self.legs_obj[0] + ORIGIN_FL + BASE_LEG_OBJ;
+        let (x, y, z) = self.leg(&origin, &objective);
         self.xgo.motor(Motor::ShoulderFL, x).unwrap();
         self.xgo.motor(Motor::UpperLegFL, y).unwrap();
         self.xgo.motor(Motor::LowerLegFL, z).unwrap();
@@ -65,7 +66,8 @@ impl Argos {
 
     fn front_right(&mut self) {
         let origin = self.origin_pos + ORIGIN_FR;
-        let (x, y, z) = self.leg(&origin, &self.legs_obj[1]);
+        let objective = self.legs_obj[1] + ORIGIN_FR + BASE_LEG_OBJ;
+        let (x, y, z) = self.leg(&origin, &objective);
         self.xgo.motor(Motor::ShoulderFR, x).unwrap();
         self.xgo.motor(Motor::UpperLegFR, y).unwrap();
         self.xgo.motor(Motor::LowerLegFR, z).unwrap();
@@ -73,7 +75,8 @@ impl Argos {
 
     fn back_left(&mut self) {
         let origin = self.origin_pos + ORIGIN_BL;
-        let (x, y, z) = self.leg(&origin, &self.legs_obj[2]);
+        let objective = self.legs_obj[2] + ORIGIN_BL + BASE_LEG_OBJ;
+        let (x, y, z) = self.leg(&origin, &objective);
         self.xgo.motor(Motor::ShoulderBL, x).unwrap();
         self.xgo.motor(Motor::UpperLegBL, y).unwrap();
         self.xgo.motor(Motor::LowerLegBL, z).unwrap();
@@ -81,7 +84,8 @@ impl Argos {
 
     fn back_right(&mut self) {
         let origin = self.origin_pos + ORIGIN_BR;
-        let (x, y, z) = self.leg(&origin, &self.legs_obj[3]);
+        let objective = self.legs_obj[2] + ORIGIN_BR + BASE_LEG_OBJ;
+        let (x, y, z) = self.leg(&origin, &objective);
         self.xgo.motor(Motor::ShoulderBR, x).unwrap();
         self.xgo.motor(Motor::UpperLegBR, y).unwrap();
         self.xgo.motor(Motor::LowerLegBR, z).unwrap();

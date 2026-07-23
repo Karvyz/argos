@@ -1,7 +1,6 @@
 use anyhow::Result;
 
 mod argos;
-mod model;
 
 use argos::Argos;
 
