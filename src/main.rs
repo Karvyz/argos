@@ -6,7 +6,7 @@ use argos::Argos;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut argos = Argos::new();
+    let mut argos = Argos::new().await;
     argos.run_ms_async().await;
     Ok(())
 }

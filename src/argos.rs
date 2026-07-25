@@ -22,9 +22,13 @@ pub struct Argos {
 }
 
 impl Argos {
-    pub fn new() -> Self {
-        let mut xgo = XgoDog::builder().port_name("/dev/ttyAMA0").build().unwrap();
-        xgo.load_all_motors().unwrap();
+    pub async fn new() -> Self {
+        let mut xgo = XgoDog::builder()
+            .port_name("/dev/ttyAMA0")
+            .build()
+            .await
+            .unwrap();
+        xgo.load_all_motors().await.unwrap();
 
         Argos {
             xgo,
@@ -41,7 +45,8 @@ impl Argos {
             timer.tick().await;
 
             let instant = Instant::now();
-            self.update_model();
+            let imu = self.xgo.read_imu().await.unwrap();
+            self.update_model().await;
             let duration = instant.elapsed();
             println!("{duration:?}");
         }
@@ -55,47 +60,47 @@ impl Argos {
         }
     }
 
-    fn front_left(&mut self) {
+    async fn front_left(&mut self) {
         let origin = self.origin_pos + ORIGIN_FL;
         let objective = self.legs_obj[0] + ORIGIN_FL + BASE_LEG_OBJ;
         let (x, y, z) = self.leg(&origin, &objective);
-        self.xgo.motor(Motor::ShoulderFL, x).unwrap();
-        self.xgo.motor(Motor::UpperLegFL, y).unwrap();
-        self.xgo.motor(Motor::LowerLegFL, z).unwrap();
+        self.xgo.motor(Motor::ShoulderFL, x).await.unwrap();
+        self.xgo.motor(Motor::UpperLegFL, y).await.unwrap();
+        self.xgo.motor(Motor::LowerLegFL, z).await.unwrap();
     }
 
-    fn front_right(&mut self) {
+    async fn front_right(&mut self) {
         let origin = self.origin_pos + ORIGIN_FR;
         let objective = self.legs_obj[1] + ORIGIN_FR + BASE_LEG_OBJ;
         let (x, y, z) = self.leg(&origin, &objective);
-        self.xgo.motor(Motor::ShoulderFR, x).unwrap();
-        self.xgo.motor(Motor::UpperLegFR, y).unwrap();
-        self.xgo.motor(Motor::LowerLegFR, z).unwrap();
+        self.xgo.motor(Motor::ShoulderFR, x).await.unwrap();
+        self.xgo.motor(Motor::UpperLegFR, y).await.unwrap();
+        self.xgo.motor(Motor::LowerLegFR, z).await.unwrap();
     }
 
-    fn back_left(&mut self) {
+    async fn back_left(&mut self) {
         let origin = self.origin_pos + ORIGIN_BL;
         let objective = self.legs_obj[2] + ORIGIN_BL + BASE_LEG_OBJ;
         let (x, y, z) = self.leg(&origin, &objective);
-        self.xgo.motor(Motor::ShoulderBL, x).unwrap();
-        self.xgo.motor(Motor::UpperLegBL, y).unwrap();
-        self.xgo.motor(Motor::LowerLegBL, z).unwrap();
+        self.xgo.motor(Motor::ShoulderBL, x).await.unwrap();
+        self.xgo.motor(Motor::UpperLegBL, y).await.unwrap();
+        self.xgo.motor(Motor::LowerLegBL, z).await.unwrap();
     }
 
-    fn back_right(&mut self) {
+    async fn back_right(&mut self) {
         let origin = self.origin_pos + ORIGIN_BR;
         let objective = self.legs_obj[2] + ORIGIN_BR + BASE_LEG_OBJ;
         let (x, y, z) = self.leg(&origin, &objective);
-        self.xgo.motor(Motor::ShoulderBR, x).unwrap();
-        self.xgo.motor(Motor::UpperLegBR, y).unwrap();
-        self.xgo.motor(Motor::LowerLegBR, z).unwrap();
+        self.xgo.motor(Motor::ShoulderBR, x).await.unwrap();
+        self.xgo.motor(Motor::UpperLegBR, y).await.unwrap();
+        self.xgo.motor(Motor::LowerLegBR, z).await.unwrap();
     }
 
-    fn update_model(&mut self) {
-        self.front_left();
-        self.front_right();
-        self.back_left();
-        self.back_right();
+    async fn update_model(&mut self) {
+        self.front_left().await;
+        self.front_right().await;
+        self.back_left().await;
+        self.back_right().await;
     }
 
     pub fn leg(&self, origin: &Vec3, objective: &Vec3) -> (f32, f32, f32) {
