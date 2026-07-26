@@ -1,18 +1,27 @@
 use std::{f32::consts::PI, time::Duration};
 
 use glam::{Quat, Vec3};
-use tokio::time::{Instant, MissedTickBehavior, interval};
+use tokio::{
+    sync::mpsc,
+    time::{Instant, MissedTickBehavior, interval},
+};
 use xgo::{Motor, XgoDog};
 
 use crate::model::Model;
 
+pub enum Action {
+    Circle,
+    Exit,
+}
+
 pub struct Argos {
     xgo: XgoDog,
     model: Model,
+    rx: mpsc::Receiver<Action>,
 }
 
 impl Argos {
-    pub async fn new() -> Self {
+    pub async fn new(rx: mpsc::Receiver<Action>) -> Self {
         let mut xgo = XgoDog::builder()
             .port_name("/dev/ttyAMA0")
             .build()
@@ -23,6 +32,7 @@ impl Argos {
         Argos {
             xgo,
             model: Model::new(),
+            rx,
         }
     }
 
@@ -34,7 +44,7 @@ impl Argos {
         let mut k = 0;
 
         self.model.update();
-        println!("{:?}", self.model);
+        // println!("{:?}", self.model);
         let position = self.model.position;
         let rot = self.model.rotation;
 
@@ -49,7 +59,7 @@ impl Argos {
             }
 
             let imu = self.xgo.read_imu().await.unwrap();
-            println!("{imu:?}");
+            // println!("{imu:?}");
             // let offset = Vec3::X * (i/*  + PI / 2. */).cos() + Vec3::Z * i.sin();
             // println!("offset: {offset}");
             // self.model.position = position + offset;
@@ -59,6 +69,13 @@ impl Argos {
             // println!("{:?}", self.model);
             i += 0.1;
             k = (k + 1) % 4;
+            match self.rx.try_recv() {
+                Ok(a) => match a {
+                    Action::Circle => (),
+                    Action::Exit => break,
+                },
+                Err(_) => (),
+            }
             let duration = instant.elapsed();
             // println!("{duration:?}");
         }
