@@ -1,70 +1,55 @@
-use futures::StreamExt;
-use rig_core::{
-    agent::{Agent, MultiTurnStreamItem, Text},
-    client::CompletionClient,
-    memory::InMemoryConversationMemory,
-    providers::llamafile::{Client, CompletionModel, LLAMA_CPP},
-    streaming::{StreamedAssistantContent, StreamingPrompt},
-};
+use colored::Colorize;
+use rustyline::{Config, error::ReadlineError};
 use tokio::sync::mpsc::Sender;
 
-use crate::argos::Action;
+use crate::{argos::Action, core::llm::LLM};
+
+mod llm;
+
+enum CmdRes {
+    Ok(String),
+    None,
+    Exit,
+}
 
 pub struct Core {
-    client: Client,
-    agent: Agent<CompletionModel>,
+    llm: LLM,
     tx: Sender<Action>,
 }
 
 impl Core {
     pub fn new(url: &str, tx: Sender<Action>) -> Self {
-        let client = Client::from_url(url).unwrap();
-        let agent = Self::agent(&client);
-        Self { client, agent, tx }
-    }
-
-    pub fn new_agent(&mut self) {
-        self.agent = Self::agent(&self.client)
-    }
-
-    fn agent(client: &Client) -> Agent<CompletionModel> {
-        let memory = InMemoryConversationMemory::new();
-        client
-            .agent(LLAMA_CPP)
-            .memory(memory)
-            .preamble("You are Argos, my faithfull robot dog.")
-            // .tools()
-            .default_max_turns(10)
-            .build()
-    }
-
-    pub async fn ask(&self, prompt: &str) {
-        let mut stream = self.agent.stream_prompt(prompt).conversation("conv").await;
-        while let Some(content) = stream.next().await {
-            match content {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                    Text { text, .. },
-                ))) => {
-                    print!("{text}");
-                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                }
-                Ok(MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Reasoning(reasoning),
-                )) => {
-                    let reasoning = reasoning.display_text();
-                    print!("{reasoning}");
-                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                }
-                Ok(MultiTurnStreamItem::FinalResponse(_)) => println!(),
-                Err(err) => {
-                    eprintln!("Error: {err}");
-                }
-                _ => {}
-            };
+        Core {
+            llm: LLM::new(url, tx.clone()),
+            tx,
         }
     }
 
-    pub async fn exit(&mut self) {
-        self.tx.send(Action::Exit).await.unwrap();
+    pub async fn run(&mut self) {
+        loop {
+            match Self::parse().await {
+                CmdRes::Ok(s) => self.llm.ask(&s).await,
+                CmdRes::None => (),
+                CmdRes::Exit => {
+                    self.tx.send(Action::Exit).await.unwrap();
+                    break;
+                }
+            }
+        }
+    }
+
+    async fn parse() -> CmdRes {
+        let config = Config::builder().edit_mode(rustyline::EditMode::Vi).build();
+        let mut rl = rustyline::DefaultEditor::with_config(config).unwrap();
+        let readline = rl.readline(&format!("{} ", ">>".cyan().bold()));
+        match readline {
+            Ok(line) => CmdRes::Ok(line),
+            Err(ReadlineError::Interrupted) => CmdRes::None,
+            Err(ReadlineError::Eof) => CmdRes::Exit,
+            Err(err) => {
+                println!("Error: {:?}", err);
+                CmdRes::None
+            }
+        }
     }
 }
