@@ -19,9 +19,9 @@ pub struct Core {
 }
 
 impl Core {
-    pub fn new(url: &str, tx: Sender<Action>) -> Self {
+    pub async fn new(url: &str, tx: Sender<Action>) -> Self {
         Core {
-            llm: LLM::new(url, tx.clone()),
+            llm: LLM::new(url, tx.clone()).await,
             tx,
         }
     }

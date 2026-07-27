@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
 
 async fn init_core(url: String, tx: Sender<Action>) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut core = Core::new(&url, tx);
+        let mut core = Core::new(&url, tx).await;
         core.run().await
     })
 }

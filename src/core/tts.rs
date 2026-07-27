@@ -12,7 +12,7 @@ impl TTS {
             let sink_handle = rodio::DeviceSinkBuilder::open_default_sink()
                 .expect("Failed to open default audio stream");
 
-            while let Some(message) = rx.blocking_recv() {
+            while let Some(message) = rx.recv().await {
                 let audio = tts
                     .synthesize_with_options(
                         &message,
@@ -31,9 +31,8 @@ impl TTS {
                 player.append(source);
                 player.sleep_until_end();
             }
-        })
-        .await
-        .expect("TTS failed");
+            println!("TTS dropped");
+        });
         tx
     }
 }

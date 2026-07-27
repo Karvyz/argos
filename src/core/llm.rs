@@ -7,11 +7,10 @@ use rig_core::{
     streaming::{StreamedAssistantContent, StreamingPrompt},
     tool::Tool,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Sender, error::SendError};
 
-use crate::argos::Action;
+use crate::{argos::Action, core::tts::TTS};
 
 pub struct LLM {
     client: Client,
@@ -20,23 +19,23 @@ pub struct LLM {
 }
 
 impl LLM {
-    pub fn new(url: &str, tx: Sender<Action>) -> Self {
+    pub async fn new(url: &str, tx: Sender<Action>) -> Self {
         let client = Client::from_url(url).unwrap();
-        let agent = Self::agent(&client);
+        let agent = Self::agent(&client).await;
         Self { client, agent, tx }
     }
 
-    pub fn new_agent(&mut self) {
-        self.agent = Self::agent(&self.client)
+    pub async fn new_agent(&mut self) {
+        self.agent = Self::agent(&self.client).await
     }
 
-    fn agent(client: &Client) -> Agent<CompletionModel> {
+    async fn agent(client: &Client) -> Agent<CompletionModel> {
         let memory = InMemoryConversationMemory::new();
         client
             .agent(LLAMA_CPP)
             .memory(memory)
             .preamble("You are Argos, my faithfull robot dog.")
-            // .tools()
+            .tools(vec![Box::new(ToolTTS::new(TTS::run().await))])
             .default_max_turns(10)
             .build()
     }
@@ -68,14 +67,26 @@ impl LLM {
     }
 }
 
-#[derive(Deserialize, Serialize)]
-struct ToolTTS;
+struct ToolTTS {
+    tts_tx: Sender<String>,
+}
+
+impl ToolTTS {
+    pub fn new(tx: Sender<String>) -> Self {
+        ToolTTS { tts_tx: tx }
+    }
+
+    async fn send_to_tts(&self, text: String) -> Result<String, SendError<String>> {
+        self.tts_tx.send(text).await?;
+        Ok("Ok".to_string())
+    }
+}
 
 impl Tool for ToolTTS {
     const NAME: &'static str = "tts";
-    type Error = std::io::Error;
+    type Error = SendError<String>;
     type Args = String;
-    type Output = ();
+    type Output = String;
 
     fn description(&self) -> String {
         "Speaks the given text".to_string()
@@ -99,10 +110,6 @@ impl Tool for ToolTTS {
         args: Self::Args,
     ) -> impl Future<Output = Result<Self::Output, Self::Error>> + rig_core::wasm_compat::WasmCompatSend
     {
-        test()
+        self.send_to_tts(args)
     }
-}
-
-async fn test() -> Result<(), std::io::Error> {
-    todo!()
 }
