@@ -5,6 +5,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{argos::Action, core::llm::LLM};
 
 mod llm;
+mod tts;
 
 enum CmdRes {
     Ok(String),

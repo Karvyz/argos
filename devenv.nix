@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   languages = {
     rust = {
@@ -16,8 +16,16 @@
   };
 
   packages = with pkgs; [
+    openssl
+    alsa-lib
+    cmake
+
     udev
     inotify-tools
     rsync
+  ];
+
+  env.LD_LIBRARY_PATH = lib.makeLibraryPath [
+    pkgs.libclang
   ];
 }

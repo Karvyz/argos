@@ -5,7 +5,10 @@ use rig_core::{
     memory::InMemoryConversationMemory,
     providers::llamafile::{Client, CompletionModel, LLAMA_CPP},
     streaming::{StreamedAssistantContent, StreamingPrompt},
+    tool::Tool,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::sync::mpsc::Sender;
 
 use crate::argos::Action;
@@ -63,4 +66,43 @@ impl LLM {
             };
         }
     }
+}
+
+#[derive(Deserialize, Serialize)]
+struct ToolTTS;
+
+impl Tool for ToolTTS {
+    const NAME: &'static str = "tts";
+    type Error = std::io::Error;
+    type Args = String;
+    type Output = ();
+
+    fn description(&self) -> String {
+        "Speaks the given text".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "The text to speak"
+                }
+            },
+            "required": ["text"],
+        })
+    }
+
+    fn call(
+        &self,
+        args: Self::Args,
+    ) -> impl Future<Output = Result<Self::Output, Self::Error>> + rig_core::wasm_compat::WasmCompatSend
+    {
+        test()
+    }
+}
+
+async fn test() -> Result<(), std::io::Error> {
+    todo!()
 }

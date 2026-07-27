@@ -1,11 +1,10 @@
-use std::{f32::consts::PI, time::Duration};
+use std::time::Duration;
 
-use glam::{Quat, Vec3};
 use tokio::{
     sync::mpsc,
     time::{Instant, MissedTickBehavior, interval},
 };
-use xgo::{Motor, XgoDog};
+use xgo::XgoDog;
 
 use crate::model::Model;
 
@@ -40,15 +39,15 @@ impl Argos {
         let mut timer = interval(Duration::from_millis(200));
         timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-        let mut i: f32 = 0.;
-        let mut k = 0;
+        // let mut i: f32 = 0.;
+        // let mut k = 0;
 
         self.model.update();
         // println!("{:?}", self.model);
-        let position = self.model.position;
-        let rot = self.model.rotation;
+        // let position = self.model.position;
+        // let rot = self.model.rotation;
 
-        let feetpos = self.model.feets[0];
+        // let feetpos = self.model.feets[0];
 
         loop {
             timer.tick().await;
@@ -67,8 +66,8 @@ impl Argos {
 
             self.model.update();
             // println!("{:?}", self.model);
-            i += 0.1;
-            k = (k + 1) % 4;
+            // i += 0.1;
+            // k = (k + 1) % 4;
             match self.rx.try_recv() {
                 Ok(a) => match a {
                     Action::Circle => (),
@@ -76,7 +75,7 @@ impl Argos {
                 },
                 Err(_) => (),
             }
-            let duration = instant.elapsed();
+            // let duration = instant.elapsed();
             // println!("{duration:?}");
         }
     }
