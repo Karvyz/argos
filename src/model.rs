@@ -18,7 +18,7 @@ const FEET_BL: Vec3 = Vec3::new(-BODY_LENGTH / 2., 0., -BODY_WIDTH / 2. - SHOULD
 
 pub struct Model {
     pub position: Vec3,
-    pub rotation: Quat,
+    rotation: Quat,
     legs: [Vec3; 4],
     pub feets: [Vec3; 4],
     rotated_feets: [Vec3; 4],
@@ -35,6 +35,48 @@ impl Model {
             rotated_feets: [Vec3::ZERO; 4],
             angles: [(Motor::Claw, 0.); 15],
         }
+    }
+
+    pub fn rotation(&mut self, pitch: f32, roll: f32, yaw: f32) {
+        let qpitch = Quat::from_rotation_z(-pitch.to_radians());
+        let qroll = Quat::from_rotation_x(roll.to_radians());
+        let qyaw = Quat::from_rotation_y(yaw.to_radians());
+        self.rotation = qyaw * qpitch * qroll;
+    }
+
+    pub fn rotate(&mut self, pitch: f32, roll: f32, yaw: f32) {
+        let qpitch = Quat::from_rotation_z(-pitch.to_radians());
+        let qroll = Quat::from_rotation_x(roll.to_radians());
+        let qyaw = Quat::from_rotation_y(yaw.to_radians());
+        self.rotation = (self.rotation * qyaw * qpitch * qroll).normalize();
+    }
+
+    pub fn tilt_forward(&mut self, degrees: f32) {
+        self.rotate(degrees, 0., 0.);
+    }
+
+    pub fn tilt_backward(&mut self, degrees: f32) {
+        self.rotate(-degrees, 0., 0.);
+    }
+
+    pub fn tilt_left(&mut self, degrees: f32) {
+        self.rotate(0., -degrees, 0.);
+    }
+
+    pub fn tilt_right(&mut self, degrees: f32) {
+        self.rotate(0., degrees, 0.);
+    }
+
+    pub fn turn_left(&mut self, degrees: f32) {
+        self.rotate(0., 0., degrees);
+    }
+
+    pub fn turn_right(&mut self, degrees: f32) {
+        self.rotate(0., 0., -degrees);
+    }
+
+    pub fn level(&mut self) {
+        self.rotation = Quat::IDENTITY;
     }
 
     pub fn update(&mut self) {
@@ -210,5 +252,73 @@ impl std::fmt::Debug for Model {
         }
         write!(f, "}}")?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tilt_forward_lowers_front_of_body() {
+        let mut model = Model::new();
+
+        model.tilt_forward(10.);
+        model.update();
+
+        assert!(model.legs[0].y < model.legs[2].y);
+        assert!(model.legs[1].y < model.legs[3].y);
+    }
+
+    #[test]
+    fn tilt_right_lowers_right_side_of_body() {
+        let mut model = Model::new();
+
+        model.tilt_right(10.);
+        model.update();
+
+        assert!(model.legs[1].y < model.legs[0].y);
+        assert!(model.legs[3].y < model.legs[2].y);
+    }
+
+    #[test]
+    fn turn_left_rotates_front_toward_left_without_tilting() {
+        let mut model = Model::new();
+
+        model.turn_left(10.);
+        model.update();
+
+        let front_z = model.legs[0].z + model.legs[1].z;
+        let back_z = model.legs[2].z + model.legs[3].z;
+        assert!(front_z < back_z);
+        assert!(
+            model
+                .legs
+                .iter()
+                .all(|leg| (leg.y - BASE_HEIGHT).abs() < f32::EPSILON)
+        );
+    }
+
+    #[test]
+    fn tilt_forward_adds_to_existing_left_turn() {
+        let mut model = Model::new();
+        model.turn_left(25.);
+        let left_turn = model.rotation;
+
+        model.tilt_forward(10.);
+
+        let forward_tilt = Quat::from_rotation_z(-10_f32.to_radians());
+        let expected = left_turn * forward_tilt;
+        assert!(model.rotation.abs_diff_eq(expected, f32::EPSILON));
+    }
+
+    #[test]
+    fn level_restores_identity_rotation() {
+        let mut model = Model::new();
+        model.rotation(10., -5., 0.);
+
+        model.level();
+
+        assert_eq!(model.rotation, Quat::IDENTITY);
     }
 }
