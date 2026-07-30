@@ -7,10 +7,13 @@ use rig_core::{
     streaming::{StreamedAssistantContent, StreamingPrompt},
     tool::Tool,
 };
+use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::{Sender, error::SendError};
 
 use crate::{argos::Action, core::tts::TTS};
+
+const SYSTEM_PROMPT: &str = "You are Argos, the robot dog. Act like a sort of Jarvis. Use the TTS tool as your only way to communicate.";
 
 pub struct LLM {
     client: Client,
@@ -25,16 +28,12 @@ impl LLM {
         Self { client, agent, tx }
     }
 
-    pub async fn new_agent(&mut self) {
-        self.agent = Self::agent(&self.client).await
-    }
-
     async fn agent(client: &Client) -> Agent<CompletionModel> {
         let memory = InMemoryConversationMemory::new();
         client
             .agent(LLAMA_CPP)
             .memory(memory)
-            .preamble("You are Argos, my faithfull robot dog.")
+            .preamble(SYSTEM_PROMPT)
             .tools(vec![Box::new(ToolTTS::new(TTS::run().await))])
             .default_max_turns(10)
             .build()
@@ -67,6 +66,11 @@ impl LLM {
     }
 }
 
+#[derive(Deserialize)]
+struct TTSArgs {
+    text: String,
+}
+
 struct ToolTTS {
     tts_tx: Sender<String>,
 }
@@ -76,8 +80,9 @@ impl ToolTTS {
         ToolTTS { tts_tx: tx }
     }
 
-    async fn send_to_tts(&self, text: String) -> Result<String, SendError<String>> {
-        self.tts_tx.send(text).await?;
+    async fn send_to_tts(&self, args: TTSArgs) -> Result<String, SendError<String>> {
+        println!("TTS call: {}", args.text);
+        self.tts_tx.send(args.text).await?;
         Ok("Ok".to_string())
     }
 }
@@ -85,7 +90,7 @@ impl ToolTTS {
 impl Tool for ToolTTS {
     const NAME: &'static str = "tts";
     type Error = SendError<String>;
-    type Args = String;
+    type Args = TTSArgs;
     type Output = String;
 
     fn description(&self) -> String {
