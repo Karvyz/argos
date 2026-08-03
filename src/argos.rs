@@ -2,10 +2,11 @@ use std::time::Duration;
 
 use tokio::{
     sync::mpsc,
-    time::{Instant, MissedTickBehavior, interval},
+    time::{MissedTickBehavior, interval},
 };
-use xgo::XgoDog;
+use zenoh::{Session, pubsub::Publisher};
 
+use crate::comms;
 use crate::model::Model;
 
 pub enum Action {
@@ -14,22 +15,20 @@ pub enum Action {
 }
 
 pub struct Argos {
-    xgo: XgoDog,
+    motors: Publisher<'static>,
     model: Model,
     rx: mpsc::Receiver<Action>,
 }
 
 impl Argos {
-    pub async fn new(rx: mpsc::Receiver<Action>) -> Self {
-        let mut xgo = XgoDog::builder()
-            .port_name("/dev/ttyAMA0")
-            .build()
+    pub async fn new(rx: mpsc::Receiver<Action>, session: Session) -> Self {
+        let motors = session
+            .declare_publisher(comms::keys::MOTORS)
             .await
             .unwrap();
-        xgo.load_all_motors().await.unwrap();
 
         Argos {
-            xgo,
+            motors,
             model: Model::new(),
             rx,
         }
@@ -52,12 +51,11 @@ impl Argos {
         loop {
             timer.tick().await;
 
-            let instant = Instant::now();
-            for (motor, angle) in self.model.angles {
-                self.xgo.motor(motor, angle).await.unwrap();
-            }
-
-            let imu = self.xgo.read_imu().await.unwrap();
+            let angles = self.model.angles.map(|(_, angle)| angle);
+            self.motors
+                .put(comms::motors::encode(&angles))
+                .await
+                .unwrap();
             // println!("{imu:?}");
             // let offset = Vec3::X * (i/*  + PI / 2. */).cos() + Vec3::Z * i.sin();
             // println!("offset: {offset}");

@@ -1,15 +1,19 @@
 use kokoro_micro::TtsEngine;
-use rodio::{Player, buffer::SamplesBuffer, nz};
 use tokio::sync::mpsc::{self, Sender};
+use zenoh::{Session, pubsub::Publisher};
+
+use crate::comms;
 
 pub struct TTS {}
 
 impl TTS {
-    pub async fn run() -> Sender<String> {
+    pub async fn run(session: Session) -> Sender<String> {
         let (tx, mut rx) = mpsc::channel::<String>(10);
         tokio::spawn(async move {
             let mut tts = TtsEngine::new().await.expect("TTS failed to load");
-            let sink_handle = rodio::DeviceSinkBuilder::open_default_sink()
+            let speaker: Publisher<'static> = session
+                .declare_publisher(comms::keys::SPEAKER)
+                .await
                 .expect("Failed to open default audio stream");
 
             while let Some(message) = rx.recv().await {
@@ -22,16 +26,12 @@ impl TTS {
                         Some("en"), // language
                     )
                     .expect("Failed to synthesize audio");
-                let source = SamplesBuffer::new(
-                    nz!(1),     // ChannelCount
-                    nz!(24000), // SampleRate
-                    audio,      // Your Vec<f32>
-                );
-                let player = Player::connect_new(&sink_handle.mixer());
-                player.append(source);
-                player.sleep_until_end();
+
+                speaker
+                    .put(comms::audio::encode(&audio))
+                    .await
+                    .expect("Failed to publish audio");
             }
-            println!("TTS dropped");
         });
         tx
     }

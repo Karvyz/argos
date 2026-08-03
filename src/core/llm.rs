@@ -10,6 +10,7 @@ use rig_core::{
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::{Sender, error::SendError};
+use zenoh::Session;
 
 use crate::{argos::Action, core::tts::TTS};
 
@@ -22,19 +23,19 @@ pub struct LLM {
 }
 
 impl LLM {
-    pub async fn new(url: &str, tx: Sender<Action>) -> Self {
+    pub async fn new(url: &str, tx: Sender<Action>, session: Session) -> Self {
         let client = Client::from_url(url).unwrap();
-        let agent = Self::agent(&client).await;
+        let agent = Self::agent(&client, session).await;
         Self { client, agent, tx }
     }
 
-    async fn agent(client: &Client) -> Agent<CompletionModel> {
+    async fn agent(client: &Client, session: Session) -> Agent<CompletionModel> {
         let memory = InMemoryConversationMemory::new();
         client
             .agent(LLAMA_CPP)
             .memory(memory)
             .preamble(SYSTEM_PROMPT)
-            .tools(vec![Box::new(ToolTTS::new(TTS::run().await))])
+            .tools(vec![Box::new(ToolTTS::new(TTS::run(session).await))])
             .default_max_turns(10)
             .build()
     }

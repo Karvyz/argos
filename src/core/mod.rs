@@ -1,6 +1,7 @@
 use colored::Colorize;
 use rustyline::{Config, error::ReadlineError};
 use tokio::sync::mpsc::Sender;
+use zenoh::Session;
 
 use crate::{argos::Action, core::llm::LLM};
 
@@ -19,9 +20,9 @@ pub struct Core {
 }
 
 impl Core {
-    pub async fn new(url: &str, tx: Sender<Action>) -> Self {
+    pub async fn new(url: &str, tx: Sender<Action>, session: Session) -> Self {
         Core {
-            llm: LLM::new(url, tx.clone()).await,
+            llm: LLM::new(url, tx.clone(), session).await,
             tx,
         }
     }
