@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Write, process::exit, time::Duration};
+use std::time::Duration;
 
 use libcamera::{
     camera::CameraConfigurationStatus,
@@ -11,100 +11,25 @@ use libcamera::{
     request::ReuseFlag,
     stream::StreamRole,
 };
+use zenoh::Config;
 
-// drm-fourcc does not have MJPEG type yet, construct it from raw fourcc identifier
-const PIXEL_FORMAT_MJPEG: PixelFormat =
+// drm-fourcc does not have RG24 type yet, construct it from raw fourcc identifier
+const PIXEL_FORMAT_RG24: PixelFormat =
     PixelFormat::new(u32::from_le_bytes([b'R', b'G', b'2', b'4']), 0);
 
-/// Print all available pixel formats and sizes for a given stream configuration.
-/// Decode a fourcc u32 into a readable string like "'MJPG'"
-fn fourcc_to_string(fourcc: u32) -> String {
-    let bytes = fourcc.to_le_bytes();
-    let chars: String = bytes
-        .iter()
-        .map(|&b| if b.is_ascii_graphic() { b as char } else { '?' })
-        .collect();
-    format!("'{chars}'")
-}
+#[tokio::main]
+async fn main() {
+    // Initiate logging
+    zenoh::init_log_from_env_or("error");
 
-fn list_formats_for_role(cam: &libcamera::camera::Camera, role: StreamRole) {
-    let config = match cam.generate_configuration(&[role]) {
-        Some(c) => c,
-        None => return, // skip roles not supported by this camera
-    };
-    if let Some(cfg) = config.get(0) {
-        let formats = cfg.formats();
-        let pixel_formats: Vec<_> = formats.pixel_formats().into_iter().collect();
-        if pixel_formats.is_empty() {
-            return;
-        }
-        println!("    Role: {role:?}");
-        for pf in &pixel_formats {
-            let sizes = formats.sizes(*pf);
-            println!(
-                "      PixelFormat: {pf}  fourcc={}",
-                fourcc_to_string(pf.fourcc())
-            );
-            // for size in &sizes {
-            //     println!("        - {size:?}");
-            // }
-            if sizes.is_empty() {
-                // Use range() as fallback
-                let range = formats.range(*pf);
-                println!("        range: {range:?}");
-            }
-        }
-    }
-}
+    let config = Config::default();
+    let key = "robot/camera";
 
-fn list_all_cameras(mgr: &CameraManager) {
-    let cameras = mgr.cameras();
+    let session = zenoh::open(config).await.unwrap();
+    let publisher = session.declare_publisher(key).await.unwrap();
 
-    if cameras.is_empty() {
-        println!("No cameras found.");
-        return;
-    }
-
-    for (idx, cam) in cameras.iter().enumerate() {
-        let model = cam
-            .properties()
-            .get::<properties::Model>()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|_| "<unknown>".to_string());
-
-        let id = cam.id();
-        println!("Camera #{}: {} ({})", idx, model, id);
-
-        let roles = [
-            StreamRole::StillCapture,
-            StreamRole::VideoRecording,
-            StreamRole::ViewFinder,
-            StreamRole::Raw,
-        ];
-        for role in roles {
-            list_formats_for_role(&cam, role);
-        }
-        println!();
-    }
-}
-
-fn main() {
     let mgr = CameraManager::new().expect("Failed to create CameraManager");
-
-    println!("=== Available cameras and formats ===");
-    list_all_cameras(&mgr);
-
-    let filename = match std::env::args().nth(1) {
-        Some(f) => f,
-        None => {
-            println!("Error: missing file output parameter");
-            println!("Usage: ./video_capture </path/to/output.mjpeg>");
-            exit(1);
-        }
-    };
-
     let cameras = mgr.cameras();
-
     let cam = cameras.get(0).expect("No cameras found");
 
     println!(
@@ -121,14 +46,12 @@ fn main() {
 
     cfgs.get_mut(0)
         .unwrap()
-        .set_pixel_format(PIXEL_FORMAT_MJPEG);
-
-    println!("Generated config: {cfgs:#?}");
+        .set_pixel_format(PIXEL_FORMAT_RG24);
 
     match cfgs.validate() {
-        CameraConfigurationStatus::Valid => println!("Camera configuration valid!"),
+        CameraConfigurationStatus::Valid => {}
         CameraConfigurationStatus::Adjusted => {
-            println!("Camera configuration was adjusted: {cfgs:#?}")
+            println!("Camera configuration was adjusted")
         }
         CameraConfigurationStatus::Invalid => panic!("Error validating camera configuration"),
     }
@@ -136,8 +59,8 @@ fn main() {
     // Ensure that pixel format was unchanged
     assert_eq!(
         cfgs.get(0).unwrap().get_pixel_format(),
-        PIXEL_FORMAT_MJPEG,
-        "MJPEG is not supported by the camera"
+        PIXEL_FORMAT_RG24,
+        "RG24 is not supported by the camera"
     );
 
     cam.configure(&mut cfgs)
@@ -149,7 +72,6 @@ fn main() {
     let cfg = cfgs.get(0).unwrap();
     let stream = cfg.stream().unwrap();
     let buffers = alloc.alloc(&stream).unwrap();
-    println!("Allocated {} buffers", buffers.len());
 
     // Convert FrameBuffer to MemoryMappedFrameBuffer, which allows reading &[u8]
     let buffers = buffers
@@ -179,31 +101,19 @@ fn main() {
 
     // Enqueue all requests to the camera
     for req in reqs {
-        println!("Request queued for execution: {req:#?}");
         cam.queue_request(req).map_err(|(_, e)| e).unwrap();
     }
 
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(&filename)
-        .expect("Unable to create output file");
-    let mut count = 0;
-    while count < 60 {
-        println!("Waiting for camera request execution");
+    loop {
         // Allow extra time for slower pipelines/first frame startup.
         let mut req = rx
             .recv_timeout(Duration::from_secs(5))
             .expect("Camera request failed");
 
-        println!("Camera request {req:?} completed!");
-        println!("Metadata: {:#?}", req.metadata());
-
         // Get framebuffer for our stream
         let framebuffer: &MemoryMappedFrameBuffer<FrameBuffer> = req.buffer(&stream).unwrap();
-        println!("FrameBuffer metadata: {:#?}", framebuffer.metadata());
 
-        // MJPEG format has only one data plane containing encoded jpeg data with all the headers
+        // RG24 format has only one data plane containing the encoded data with all the headers
         let planes = framebuffer.data();
         let frame_data = planes.first().unwrap();
         // Actual encoded data will be smalled than framebuffer size, its length can be obtained from metadata.
@@ -215,15 +125,13 @@ fn main() {
             .unwrap()
             .bytes_used as usize;
 
-        file.write_all(&frame_data[..bytes_used]).unwrap();
-        println!("Written {} bytes to {}", bytes_used, &filename);
+        publisher
+            .put(&frame_data[..bytes_used])
+            .await
+            .unwrap();
 
         // Recycle the request back to the camera for execution
         req.reuse(ReuseFlag::REUSE_BUFFERS);
         cam.queue_request(req).map_err(|(_, e)| e).unwrap();
-
-        count += 1;
     }
-
-    // Everything is cleaned up automatically by Drop implementations
 }
