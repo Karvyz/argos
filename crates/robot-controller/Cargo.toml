@@ -1,0 +1,17 @@
+[package]
+name = "robot-controller"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+comms = { path = "../comms" }
+cpal = "0.18.1"
+earshot = "1.2.1"
+hound = "3.5.1"
+libcamera = "0.7.0"
+rodio = "0.22.2"
+thiserror = "2.0.19"
+tokio = { version = "1", features = ["full"] }
+xgo = "0.1"
+zenoh = "1.9.0"

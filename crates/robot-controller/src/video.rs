@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use argos::comms;
 use libcamera::{
     camera::CameraConfigurationStatus,
     camera_manager::CameraManager,

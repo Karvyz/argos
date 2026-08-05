@@ -2,8 +2,6 @@ use kokoro_micro::TtsEngine;
 use tokio::sync::mpsc::{self, Sender};
 use zenoh::{Session, pubsub::Publisher};
 
-use crate::comms;
-
 pub struct TTS {}
 
 impl TTS {

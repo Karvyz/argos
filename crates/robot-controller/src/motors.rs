@@ -1,5 +1,4 @@
 use anyhow::Result;
-use argos::comms;
 use xgo::{Motor, XgoDog};
 use zenoh::Session;
 

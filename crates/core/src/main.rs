@@ -5,7 +5,6 @@ use tokio::{
 };
 
 mod argos;
-mod comms;
 mod core;
 mod model;
 

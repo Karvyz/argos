@@ -6,7 +6,6 @@ use tokio::{
 };
 use zenoh::{Session, pubsub::Publisher};
 
-use crate::comms;
 use crate::model::Model;
 
 pub enum Action {

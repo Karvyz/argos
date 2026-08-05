@@ -1,17 +1,20 @@
-mod mic;
-
+use anyhow::Result;
 use earshot::Detector;
-use mic::{AudioStream, save_wav};
+use zenoh::Session;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream = AudioStream::new()?;
+use crate::mic_driver::{self, AudioStream, save_wav};
+
+/// Mic capture is not implemented yet (no driver wired). Placeholder task so the
+/// `robot/mic` topic slot exists and the controller keeps its one-task-per-topic shape.
+pub async fn run(_session: Session) -> Result<()> {
+    let mut stream = AudioStream::new().expect("Fail to capture audio stream");
 
     println!("Capturing audio — 10 chunks of 256 samples at 16 kHz...");
     let mut detector = Detector::default();
     let mut recording = Vec::new();
     let mut i = 0;
     loop {
-        let chunk = stream.next_chunk()?;
+        let chunk = stream.next_chunk().unwrap();
         assert_eq!(chunk.len(), 256);
 
         recording.extend(chunk.iter().copied());
@@ -40,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let path = mic::DEFAULT_OUTPUT_FILE;
+    let path = mic_driver::DEFAULT_OUTPUT_FILE;
     save_wav(&recording, Some(path))?;
     println!("Saved {} samples to {}", recording.len(), path);
     Ok(())
