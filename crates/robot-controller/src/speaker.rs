@@ -20,8 +20,8 @@ pub async fn run(comms: Comms) -> Result<()> {
             continue;
         }
         let source = SamplesBuffer::new(
-            NonZero::new(comms::AUDIO_CHANNELS).unwrap(),
-            NonZero::new(comms::AUDIO_SAMPLE_RATE).unwrap(),
+            NonZero::new(frame.channels).unwrap(),
+            NonZero::new(frame.sample_rate).unwrap(),
             frame.samples,
         );
         player.append(source);

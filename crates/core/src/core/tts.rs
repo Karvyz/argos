@@ -26,7 +26,11 @@ impl TTS {
                     .expect("Failed to synthesize audio");
 
                 speaker
-                    .send(AudioFrame { samples: audio })
+                    .send(AudioFrame {
+                        sample_rate: 24_000,
+                        channels: 1,
+                        samples: audio,
+                    })
                     .await
                     .expect("Failed to publish audio");
             }

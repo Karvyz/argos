@@ -47,25 +47,48 @@ impl Topic for SpeakerAudio {
     const KEY: &'static str = "robot/speaker";
 
     fn encode(message: &Self::Message) -> Vec<u8> {
-        message
-            .samples
-            .iter()
-            .flat_map(|sample| sample.to_le_bytes())
-            .collect()
+        let mut payload = Vec::with_capacity(6 + message.samples.len() * 4);
+        payload.extend_from_slice(&message.sample_rate.to_le_bytes());
+        payload.extend_from_slice(&message.channels.to_le_bytes());
+        payload.extend(
+            message
+                .samples
+                .iter()
+                .flat_map(|sample| sample.to_le_bytes()),
+        );
+        payload
     }
 
     fn decode(payload: &[u8]) -> Result<Self::Message, Error> {
-        if !payload.len().is_multiple_of(std::mem::size_of::<f32>()) {
+        if payload.len() < 6 {
+            return Err(Error::InvalidPayload {
+                topic: Self::KEY,
+                reason: "missing 6-byte audio header",
+            });
+        }
+        if !(payload.len() - 6).is_multiple_of(std::mem::size_of::<f32>()) {
             return Err(Error::InvalidPayload {
                 topic: Self::KEY,
                 reason: "sample data is not aligned to f32 values",
             });
         }
-        let samples = payload
+        let sample_rate = u32::from_le_bytes(payload[0..4].try_into().unwrap());
+        let channels = u16::from_le_bytes(payload[4..6].try_into().unwrap());
+        if sample_rate == 0 || channels == 0 {
+            return Err(Error::InvalidPayload {
+                topic: Self::KEY,
+                reason: "sample rate and channel count must be nonzero",
+            });
+        }
+        let samples = payload[6..]
             .chunks_exact(4)
             .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
             .collect();
-        Ok(AudioFrame { samples })
+        Ok(AudioFrame {
+            sample_rate,
+            channels,
+            samples,
+        })
     }
 }
 
