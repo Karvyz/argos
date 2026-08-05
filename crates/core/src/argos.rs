@@ -1,10 +1,10 @@
 use std::time::Duration;
 
+use comms::{Comms, MotorCommand, Publisher, topics::MotorCommands};
 use tokio::{
     sync::mpsc,
     time::{MissedTickBehavior, interval},
 };
-use zenoh::{Session, pubsub::Publisher};
 
 use crate::model::Model;
 
@@ -14,17 +14,14 @@ pub enum Action {
 }
 
 pub struct Argos {
-    motors: Publisher<'static>,
+    motors: Publisher<MotorCommands>,
     model: Model,
     rx: mpsc::Receiver<Action>,
 }
 
 impl Argos {
-    pub async fn new(rx: mpsc::Receiver<Action>, session: Session) -> Self {
-        let motors = session
-            .declare_publisher(comms::keys::MOTORS)
-            .await
-            .unwrap();
+    pub async fn new(rx: mpsc::Receiver<Action>, comms: Comms) -> Self {
+        let motors = comms.publisher::<MotorCommands>().await.unwrap();
 
         Argos {
             motors,
@@ -51,10 +48,7 @@ impl Argos {
             timer.tick().await;
 
             let angles = self.model.angles.map(|(_, angle)| angle);
-            self.motors
-                .put(comms::motors::encode(&angles))
-                .await
-                .unwrap();
+            self.motors.send(MotorCommand { angles }).await.unwrap();
             // println!("{imu:?}");
             // let offset = Vec3::X * (i/*  + PI / 2. */).cos() + Vec3::Z * i.sin();
             // println!("offset: {offset}");

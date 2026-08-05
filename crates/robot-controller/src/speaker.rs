@@ -1,23 +1,29 @@
-use anyhow::Result;
-use rodio::{Player, buffer::SamplesBuffer, nz};
-use zenoh::Session;
+use std::num::NonZero;
 
-pub async fn run(session: Session) -> Result<()> {
-    let subscriber = session
-        .declare_subscriber(comms::keys::SPEAKER)
-        .await
-        .map_err(anyhow::Error::msg)?;
+use anyhow::Result;
+use comms::{Comms, topics::SpeakerAudio};
+use rodio::{Player, buffer::SamplesBuffer};
+
+pub async fn run(comms: Comms) -> Result<()> {
+    let subscriber = comms.subscriber::<SpeakerAudio>().await?;
 
     let sink = rodio::DeviceSinkBuilder::open_default_sink()?;
     let player = Player::connect_new(&sink.mixer());
 
-    while let Ok(sample) = subscriber.recv_async().await {
-        let samples = comms::audio::decode(sample.payload());
-        if samples.is_empty() {
+    loop {
+        let frame = match subscriber.recv().await {
+            Ok(frame) => frame,
+            Err(comms::Error::InvalidPayload { .. }) => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if frame.samples.is_empty() {
             continue;
         }
-        let source = SamplesBuffer::new(nz!(1), nz!(24000), samples);
+        let source = SamplesBuffer::new(
+            NonZero::new(comms::AUDIO_CHANNELS).unwrap(),
+            NonZero::new(comms::AUDIO_SAMPLE_RATE).unwrap(),
+            frame.samples,
+        );
         player.append(source);
     }
-    Ok(())
 }

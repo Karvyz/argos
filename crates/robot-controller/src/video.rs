@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use comms::{CameraFrame, Comms, topics::CameraFrames};
 use libcamera::{
     camera::CameraConfigurationStatus,
     camera_manager::CameraManager,
@@ -12,31 +13,26 @@ use libcamera::{
     request::ReuseFlag,
     stream::StreamRole,
 };
-use zenoh::{Session, bytes::ZBytes};
 
 // drm-fourcc does not have RG24 type yet, construct it from raw fourcc identifier
 const PIXEL_FORMAT_RG24: PixelFormat =
     PixelFormat::new(u32::from_le_bytes([b'R', b'G', b'2', b'4']), 0);
 
-pub async fn run(session: Session) -> Result<()> {
-    let publisher = session
-        .declare_publisher(comms::keys::CAMERA)
-        .congestion_control(zenoh::qos::CongestionControl::Drop)
-        .await
-        .map_err(anyhow::Error::msg)?;
+pub async fn run(comms: Comms) -> Result<()> {
+    let publisher = comms.publisher::<CameraFrames>().await?;
 
     // libcamera is blocking/callback based, so capture runs on a dedicated thread
     // and forwards encoded frames here. A small bounded channel drops stale frames.
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<ZBytes>(4);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<CameraFrame>(4);
     std::thread::spawn(move || capture_loop(tx));
 
-    while let Some(payload) = rx.recv().await {
-        publisher.put(payload).await.map_err(anyhow::Error::msg)?;
+    while let Some(frame) = rx.recv().await {
+        publisher.send(frame).await?;
     }
     Ok(())
 }
 
-fn capture_loop(tx: tokio::sync::mpsc::Sender<ZBytes>) {
+fn capture_loop(tx: tokio::sync::mpsc::Sender<CameraFrame>) {
     let mgr = CameraManager::new().expect("Failed to create CameraManager");
     let cameras = mgr.cameras();
     let cam = cameras.get(0).expect("No cameras found");
@@ -73,7 +69,8 @@ fn capture_loop(tx: tokio::sync::mpsc::Sender<ZBytes>) {
     let size = cfgs.get(0).unwrap().get_size();
     let (width, height) = (size.width, size.height);
 
-    cam.configure(&mut cfgs).expect("Unable to configure camera");
+    cam.configure(&mut cfgs)
+        .expect("Unable to configure camera");
 
     let mut alloc = FrameBufferAllocator::new(&cam);
 
@@ -135,15 +132,15 @@ fn capture_loop(tx: tokio::sync::mpsc::Sender<ZBytes>) {
             .unwrap()
             .bytes_used as usize;
 
-        let header = comms::camera::Header {
+        let frame = CameraFrame {
             width,
             height,
-            fourcc: comms::camera::RG24_FOURCC,
-            seq,
+            fourcc: comms::RG24_FOURCC,
+            sequence: seq,
+            data: frame_data[..bytes_used].to_vec(),
         };
-        let payload = comms::camera::encode(&header, &frame_data[..bytes_used]);
         // Drop the frame if the publisher is behind rather than stalling capture.
-        let _ = tx.try_send(payload);
+        let _ = tx.try_send(frame);
         seq = seq.wrapping_add(1);
 
         // Recycle the request back to the camera for execution

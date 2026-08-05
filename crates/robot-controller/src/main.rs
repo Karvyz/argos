@@ -8,14 +8,14 @@ mod video;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let session = comms::open_session().await;
+    let comms = comms::Comms::open().await?;
 
-    // One independent task per topic; the Zenoh session is cheaply cloneable.
+    // One independent task per topic; the comms handle is cheaply cloneable.
     let handles = vec![
-        tokio::spawn(video::run(session.clone())),
-        tokio::spawn(mic::run(session.clone())),
-        tokio::spawn(speaker::run(session.clone())),
-        tokio::spawn(motors::run(session.clone())),
+        tokio::spawn(video::run(comms.clone())),
+        tokio::spawn(mic::run(comms.clone())),
+        tokio::spawn(speaker::run(comms.clone())),
+        tokio::spawn(motors::run(comms)),
     ];
 
     for h in handles {

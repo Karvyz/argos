@@ -1,12 +1,12 @@
 use anyhow::Result;
+use comms::Comms;
 use earshot::Detector;
-use zenoh::Session;
 
 use crate::mic_driver::{self, AudioStream, save_wav};
 
 /// Mic capture is not implemented yet (no driver wired). Placeholder task so the
 /// `robot/mic` topic slot exists and the controller keeps its one-task-per-topic shape.
-pub async fn run(_session: Session) -> Result<()> {
+pub async fn run(_comms: Comms) -> Result<()> {
     let mut stream = AudioStream::new().expect("Fail to capture audio stream");
 
     println!("Capturing audio — 10 chunks of 256 samples at 16 kHz...");

@@ -1,22 +1,20 @@
 use anyhow::Result;
+use comms::{Comms, topics::MotorCommands};
 use xgo::{Motor, XgoDog};
-use zenoh::Session;
 
-pub async fn run(session: Session) -> Result<()> {
-    let subscriber = session
-        .declare_subscriber(comms::keys::MOTORS)
-        .await
-        .map_err(anyhow::Error::msg)?;
+pub async fn run(comms: Comms) -> Result<()> {
+    let subscriber = comms.subscriber::<MotorCommands>().await?;
 
     let mut dog = XgoDog::builder().port_name("/dev/ttyAMA0").build().await?;
     dog.load_all_motors().await?;
 
-    while let Ok(sample) = subscriber.recv_async().await {
-        let Some(angles) = comms::motors::decode(sample.payload()) else {
-            continue;
+    loop {
+        let command = match subscriber.recv().await {
+            Ok(command) => command,
+            Err(comms::Error::InvalidPayload { .. }) => continue,
+            Err(error) => return Err(error.into()),
         };
-        let cmds: [(Motor, f32); 15] = std::array::from_fn(|i| (Motor::ALL[i], angles[i]));
+        let cmds: [(Motor, f32); 15] = std::array::from_fn(|i| (Motor::ALL[i], command.angles[i]));
         dog.motors(&cmds).await?;
     }
-    Ok(())
 }

@@ -1,3 +1,4 @@
+use comms::Comms;
 use futures::StreamExt;
 use rig_core::{
     agent::{Agent, MultiTurnStreamItem, Text},
@@ -10,7 +11,6 @@ use rig_core::{
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::{Sender, error::SendError};
-use zenoh::Session;
 
 use crate::{argos::Action, core::tts::TTS};
 
@@ -23,19 +23,19 @@ pub struct LLM {
 }
 
 impl LLM {
-    pub async fn new(url: &str, tx: Sender<Action>, session: Session) -> Self {
+    pub async fn new(url: &str, tx: Sender<Action>, comms: Comms) -> Self {
         let client = Client::from_url(url).unwrap();
-        let agent = Self::agent(&client, session).await;
+        let agent = Self::agent(&client, comms).await;
         Self { client, agent, tx }
     }
 
-    async fn agent(client: &Client, session: Session) -> Agent<CompletionModel> {
+    async fn agent(client: &Client, comms: Comms) -> Agent<CompletionModel> {
         let memory = InMemoryConversationMemory::new();
         client
             .agent(LLAMA_CPP)
             .memory(memory)
             .preamble(SYSTEM_PROMPT)
-            .tools(vec![Box::new(ToolTTS::new(TTS::run(session).await))])
+            .tools(vec![Box::new(ToolTTS::new(TTS::run(comms).await))])
             .default_max_turns(10)
             .build()
     }

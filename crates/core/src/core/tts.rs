@@ -1,16 +1,16 @@
+use comms::{AudioFrame, Comms, topics::SpeakerAudio};
 use kokoro_micro::TtsEngine;
 use tokio::sync::mpsc::{self, Sender};
-use zenoh::{Session, pubsub::Publisher};
 
 pub struct TTS {}
 
 impl TTS {
-    pub async fn run(session: Session) -> Sender<String> {
+    pub async fn run(comms: Comms) -> Sender<String> {
         let (tx, mut rx) = mpsc::channel::<String>(10);
         tokio::spawn(async move {
             let mut tts = TtsEngine::new().await.expect("TTS failed to load");
-            let speaker: Publisher<'static> = session
-                .declare_publisher(comms::keys::SPEAKER)
+            let speaker = comms
+                .publisher::<SpeakerAudio>()
                 .await
                 .expect("Failed to open default audio stream");
 
@@ -26,7 +26,7 @@ impl TTS {
                     .expect("Failed to synthesize audio");
 
                 speaker
-                    .put(comms::audio::encode(&audio))
+                    .send(AudioFrame { samples: audio })
                     .await
                     .expect("Failed to publish audio");
             }
