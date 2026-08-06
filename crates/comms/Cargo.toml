@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 zenoh = "1.9.0"
 thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1", features = ["use-std"] }

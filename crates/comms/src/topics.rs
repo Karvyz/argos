@@ -1,12 +1,19 @@
+use serde::{Serialize, de::DeserializeOwned};
+
 use crate::{AudioFrame, CameraFrame, Error, MotorCommand};
 
 pub trait Topic: Send + Sync + 'static {
-    type Message: Send + Sync + 'static;
+    type Message: Serialize + DeserializeOwned + Send + Sync + 'static;
 
     const KEY: &'static str;
 
-    fn encode(message: &Self::Message) -> Vec<u8>;
-    fn decode(payload: &[u8]) -> Result<Self::Message, Error>;
+    fn encode(message: &Self::Message) -> Result<Vec<u8>, Error> {
+        Ok(postcard::to_allocvec(message)?)
+    }
+
+    fn decode(payload: &[u8]) -> Result<Self::Message, Error> {
+        Ok(postcard::from_bytes(payload)?)
+    }
 }
 
 pub struct MotorCommands;
@@ -15,28 +22,6 @@ impl Topic for MotorCommands {
     type Message = MotorCommand;
 
     const KEY: &'static str = "robot/motors";
-
-    fn encode(message: &Self::Message) -> Vec<u8> {
-        message
-            .angles
-            .iter()
-            .flat_map(|angle| angle.to_le_bytes())
-            .collect()
-    }
-
-    fn decode(payload: &[u8]) -> Result<Self::Message, Error> {
-        if payload.len() != 15 * std::mem::size_of::<f32>() {
-            return Err(Error::InvalidPayload {
-                topic: Self::KEY,
-                reason: "expected 15 f32 joint angles",
-            });
-        }
-        let angles = std::array::from_fn(|index| {
-            let offset = index * std::mem::size_of::<f32>();
-            f32::from_le_bytes(payload[offset..offset + 4].try_into().unwrap())
-        });
-        Ok(MotorCommand { angles })
-    }
 }
 
 pub struct SpeakerAudio;
@@ -45,51 +30,6 @@ impl Topic for SpeakerAudio {
     type Message = AudioFrame;
 
     const KEY: &'static str = "robot/speaker";
-
-    fn encode(message: &Self::Message) -> Vec<u8> {
-        let mut payload = Vec::with_capacity(6 + message.samples.len() * 4);
-        payload.extend_from_slice(&message.sample_rate.to_le_bytes());
-        payload.extend_from_slice(&message.channels.to_le_bytes());
-        payload.extend(
-            message
-                .samples
-                .iter()
-                .flat_map(|sample| sample.to_le_bytes()),
-        );
-        payload
-    }
-
-    fn decode(payload: &[u8]) -> Result<Self::Message, Error> {
-        if payload.len() < 6 {
-            return Err(Error::InvalidPayload {
-                topic: Self::KEY,
-                reason: "missing 6-byte audio header",
-            });
-        }
-        if !(payload.len() - 6).is_multiple_of(std::mem::size_of::<f32>()) {
-            return Err(Error::InvalidPayload {
-                topic: Self::KEY,
-                reason: "sample data is not aligned to f32 values",
-            });
-        }
-        let sample_rate = u32::from_le_bytes(payload[0..4].try_into().unwrap());
-        let channels = u16::from_le_bytes(payload[4..6].try_into().unwrap());
-        if sample_rate == 0 || channels == 0 {
-            return Err(Error::InvalidPayload {
-                topic: Self::KEY,
-                reason: "sample rate and channel count must be nonzero",
-            });
-        }
-        let samples = payload[6..]
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
-            .collect();
-        Ok(AudioFrame {
-            sample_rate,
-            channels,
-            samples,
-        })
-    }
 }
 
 pub struct CameraFrames;
@@ -98,30 +38,5 @@ impl Topic for CameraFrames {
     type Message = CameraFrame;
 
     const KEY: &'static str = "robot/camera";
-
-    fn encode(message: &Self::Message) -> Vec<u8> {
-        let mut payload = Vec::with_capacity(16 + message.data.len());
-        payload.extend_from_slice(&message.width.to_le_bytes());
-        payload.extend_from_slice(&message.height.to_le_bytes());
-        payload.extend_from_slice(&message.fourcc.to_le_bytes());
-        payload.extend_from_slice(&message.sequence.to_le_bytes());
-        payload.extend_from_slice(&message.data);
-        payload
-    }
-
-    fn decode(payload: &[u8]) -> Result<Self::Message, Error> {
-        if payload.len() < 16 {
-            return Err(Error::InvalidPayload {
-                topic: Self::KEY,
-                reason: "missing 16-byte frame header",
-            });
-        }
-        Ok(CameraFrame {
-            width: u32::from_le_bytes(payload[0..4].try_into().unwrap()),
-            height: u32::from_le_bytes(payload[4..8].try_into().unwrap()),
-            fourcc: u32::from_le_bytes(payload[8..12].try_into().unwrap()),
-            sequence: u32::from_le_bytes(payload[12..16].try_into().unwrap()),
-            data: payload[16..].to_vec(),
-        })
-    }
 }
+

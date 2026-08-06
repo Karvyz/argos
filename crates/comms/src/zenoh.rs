@@ -46,7 +46,7 @@ pub struct Publisher<T: Topic> {
 
 impl<T: Topic> Publisher<T> {
     pub async fn send(&self, message: T::Message) -> Result<(), Error> {
-        self.inner.put(ZBytes::from(T::encode(&message))).await?;
+        self.inner.put(ZBytes::from(T::encode(&message)?)).await?;
         Ok(())
     }
 }
