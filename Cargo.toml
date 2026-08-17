@@ -2,6 +2,7 @@
 members = [
 	"crates/comms",
 	"crates/core",
+	"crates/detector",
 	"crates/mock",
 	"crates/robot-controller",
 ]
