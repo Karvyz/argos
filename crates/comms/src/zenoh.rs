@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use zenoh::{
     Config, Session,
     bytes::ZBytes,
-    handlers::FifoChannelHandler,
+    handlers::{RingChannel, RingChannelHandler},
     pubsub::{Publisher as ZenohPublisher, Subscriber as ZenohSubscriber},
     sample::Sample,
 };
@@ -31,7 +31,12 @@ impl Comms {
     }
 
     pub async fn subscriber<T: Topic>(&self) -> Result<Subscriber<T>, Error> {
-        let inner = self.session.declare_subscriber(T::KEY).await?;
+        let handler = RingChannel::new(T::BUFFER);
+        let inner = self
+            .session
+            .declare_subscriber(T::KEY)
+            .with(handler)
+            .await?;
         Ok(Subscriber {
             inner,
             topic: PhantomData,
@@ -52,7 +57,7 @@ impl<T: Topic> Publisher<T> {
 }
 
 pub struct Subscriber<T: Topic> {
-    inner: ZenohSubscriber<FifoChannelHandler<Sample>>,
+    inner: ZenohSubscriber<RingChannelHandler<Sample>>,
     topic: PhantomData<T>,
 }
 
