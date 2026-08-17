@@ -2,6 +2,7 @@
 members = [
 	"crates/comms",
 	"crates/core",
+	"crates/mock",
 	"crates/robot-controller",
 ]
 resolver = "3"
