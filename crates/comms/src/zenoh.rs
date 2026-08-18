@@ -18,7 +18,9 @@ pub struct Comms {
 impl Comms {
     pub async fn open() -> Result<Self, Error> {
         zenoh::init_log_from_env_or("error");
-        let session = zenoh::open(Config::default()).await?;
+        let mut config = Config::default();
+        config.insert_json5("scouting/multicast/ttl", "2")?;
+        let session = zenoh::open(config).await?;
         Ok(Self { session })
     }
 
