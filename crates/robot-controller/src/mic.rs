@@ -1,13 +1,12 @@
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use anyhow::Result;
-use comms::Comms;
+use comms::{AudioFrame, Comms, topics::Voice};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use earshot::Detector;
 use std::sync::mpsc;
 
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 const CHUNK_SIZE: usize = 256;
-
-pub const DEFAULT_OUTPUT_FILE: &str = "mic_capture.wav";
+const THRESHOLD: f32 = 0.5;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
@@ -136,61 +135,46 @@ fn collapse_channels(interleaved: &[f32], channels: usize) -> Vec<f32> {
     mono
 }
 
-pub fn save_wav(samples: &[f32], path: Option<&str>) -> Result<(), hound::Error> {
-    let path = path.unwrap_or(DEFAULT_OUTPUT_FILE);
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: TARGET_SAMPLE_RATE,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
-    };
-    let mut writer = hound::WavWriter::create(path, spec)?;
-    for &sample in samples {
-        writer.write_sample(sample)?;
-    }
-    writer.finalize()
-}
-
-/// Mic capture is not implemented yet (no driver wired). Placeholder task so the
-/// `robot/mic` topic slot exists and the controller keeps its one-task-per-topic shape.
-pub async fn run(_comms: Comms) -> Result<()> {
+pub async fn run(comms: Comms) -> Result<()> {
+    let publisher = comms.publisher::<Voice>().await?;
     let mut stream = AudioStream::new().expect("Fail to capture audio stream");
 
-    println!("Capturing audio — 10 chunks of 256 samples at 16 kHz...");
+    println!("Listening for voice messages at 16 kHz...");
     let mut detector = Detector::default();
-    let mut recording: Vec<f32> = Vec::new();
-    let mut i = 0;
+    let mut voice_message = Vec::new();
+    let mut chunk_count = 0;
     loop {
         let chunk = stream.next_chunk().unwrap();
         assert_eq!(chunk.len(), 256);
 
-        recording.extend(chunk.iter().copied());
-
         let score = detector.predict_f32(&chunk);
         // Score is between 0-1; 0 = no voice, 1 = voice.
-        let voice = match score >= 0.5 {
-            true => "voice",
-            false => "nothing",
-        };
+        let is_voice = score >= THRESHOLD;
         let rms = (chunk.iter().map(|&s| s.powi(2)).sum::<f32>() / chunk.len() as f32).sqrt();
         println!(
             "chunk {:>2}  |  len={}  |  RMS={:.6}  |  first={:+}  last={:+} | {}",
-            i + 1,
+            chunk_count + 1,
             chunk.len(),
             rms,
             chunk.first().unwrap(),
             chunk.last().unwrap(),
-            voice,
+            if is_voice { "voice" } else { "nothing" },
         );
-        i += 1;
 
-        if i >= 1000 {
-            break;
+        if is_voice {
+            voice_message.extend(chunk);
+        } else if !voice_message.is_empty() {
+            let samples = std::mem::take(&mut voice_message);
+            println!("Sending voice message with {} samples", samples.len());
+            publisher
+                .send(AudioFrame {
+                    sample_rate: TARGET_SAMPLE_RATE,
+                    channels: 1,
+                    samples,
+                })
+                .await?;
         }
-    }
 
-    let path = DEFAULT_OUTPUT_FILE;
-    save_wav(&recording, Some(path))?;
-    println!("Saved {} samples to {}", recording.len(), path);
-    Ok(())
+        chunk_count += 1;
+    }
 }

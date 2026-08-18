@@ -18,7 +18,6 @@ pub trait Topic: Send + Sync + 'static {
 }
 
 pub struct MotorCommands;
-
 impl Topic for MotorCommands {
     type Message = MotorCommand;
 
@@ -26,8 +25,15 @@ impl Topic for MotorCommands {
     const BUFFER: usize = 5;
 }
 
-pub struct SpeakerAudio;
+pub struct Voice;
+impl Topic for Voice {
+    type Message = AudioFrame;
 
+    const KEY: &'static str = "robot/mic";
+    const BUFFER: usize = 5;
+}
+
+pub struct SpeakerAudio;
 impl Topic for SpeakerAudio {
     type Message = AudioFrame;
 
@@ -36,7 +42,6 @@ impl Topic for SpeakerAudio {
 }
 
 pub struct CameraFrames;
-
 impl Topic for CameraFrames {
     type Message = CameraFrame;
 

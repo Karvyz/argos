@@ -4648,7 +4648,6 @@ dependencies = [
  "comms",
  "cpal 0.18.1",
  "earshot",
- "hound",
  "libcamera",
  "rodio",
  "thiserror 2.0.20",
