@@ -29,10 +29,10 @@
   ];
 
   processes.sync = {
-    exec = "rsync . karviz@raspberrypi.home:/home/karviz/argos/ -av --delete --no-owner --no-group --no-perms --exclude='target/' --exclude='.git/' --exclude='.devenv/' --exclude='.gitignore'";
+    exec = "rsync . karviz@argos.home:/home/karviz/argos/ -av --delete --no-owner --no-group --no-perms --exclude='target/' --exclude='.git/' --exclude='.devenv/' --exclude='.gitignore'";
     watch = {
       paths = [
-        ./src
+        ./crates
         ./Cargo.toml
       ];
     };
