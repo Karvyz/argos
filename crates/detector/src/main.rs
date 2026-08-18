@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use comms::{CameraFrame, Comms, RG24_FOURCC, topics::CameraFrames};
 use image::{DynamicImage, RgbImage};
-use object_detector::{DetectorType, ObjectDetector};
+use object_detector::{DetectorType, ModelScale, ObjectDetector};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -10,6 +10,7 @@ async fn main() -> Result<()> {
 
     println!("Loading model...");
     let detector = ObjectDetector::from_hf(DetectorType::PromptFree)
+        .scale(ModelScale::Small)
         .build()
         .await?;
     println!("Model loaded");
