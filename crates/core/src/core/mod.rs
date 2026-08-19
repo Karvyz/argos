@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use base64::Engine;
 use colored::Colorize;
 use comms::{AudioFrame, Comms, Subscriber, topics::Voice};
 use futures::FutureExt;
@@ -44,8 +45,10 @@ impl Core {
                 result = self.voice.recv() => match result {
                     Ok(frame) => {
                         let wav = audio_frame_to_wav(frame);
+                        let wav_base64 =
+                            base64::engine::general_purpose::STANDARD.encode(wav);
                         Some(Audio {
-                            data: rig_core::message::DocumentSourceKind::Raw(wav),
+                            data: rig_core::message::DocumentSourceKind::Base64(wav_base64),
                             media_type: Some(rig_core::message::AudioMediaType::WAV),
                             additional_params: None,
                         }.into())
