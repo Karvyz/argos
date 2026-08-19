@@ -4,6 +4,7 @@ use rig_core::{
     agent::{Agent, MultiTurnStreamItem, Text},
     client::CompletionClient,
     memory::InMemoryConversationMemory,
+    message::Audio,
     providers::llamafile::{Client, CompletionModel, LLAMA_CPP},
     streaming::{StreamedAssistantContent, StreamingPrompt},
     tool::Tool,
@@ -42,6 +43,37 @@ impl LLM {
 
     pub async fn ask(&self, prompt: &str) {
         let mut stream = self.agent.stream_prompt(prompt).conversation("conv").await;
+        while let Some(content) = stream.next().await {
+            match content {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
+                    Text { text, .. },
+                ))) => {
+                    print!("{text}");
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                }
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::Reasoning(reasoning),
+                )) => {
+                    let reasoning = reasoning.display_text();
+                    print!("{reasoning}");
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => println!(),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                }
+                _ => {}
+            };
+        }
+    }
+
+    pub async fn ask2(&self, prompt: Vec<u8>) {
+        let request = Audio {
+            data: rig_core::message::DocumentSourceKind::Raw(prompt),
+            media_type: Some(rig_core::message::AudioMediaType::WAV),
+            additional_params: None,
+        };
+        let mut stream = self.agent.stream_prompt(request).conversation("conv").await;
         while let Some(content) = stream.next().await {
             match content {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(

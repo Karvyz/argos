@@ -816,6 +816,7 @@ dependencies = [
  "comms",
  "futures",
  "glam",
+ "hound",
  "kokoro-micro",
  "rig-core",
  "rustyline",

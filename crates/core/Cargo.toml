@@ -9,6 +9,7 @@ colored = "3.1.1"
 comms = { path = "../comms" }
 futures = "0.3.33"
 glam = "0.33.3"
+hound = "3.5.1"
 kokoro-micro = "1.0.1"
 rig-core = "0.40.0"
 rustyline = "18.0.1"
