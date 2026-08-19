@@ -1,6 +1,10 @@
+use std::io::Write;
+
 use colored::Colorize;
 use comms::{AudioFrame, Comms, Subscriber, topics::Voice};
+use futures::FutureExt;
 use rig_core::message::{Audio, Message};
+use rustyline_async::{Readline, ReadlineEvent};
 use tokio::sync::mpsc::Sender;
 
 use crate::{argos::Action, core::llm::LLM};
@@ -33,24 +37,48 @@ impl Core {
     }
 
     pub async fn run(&mut self) {
+        let (mut readline, mut stdout) =
+            Readline::new(format!("{} ", ">>".cyan().bold())).expect("Failed to create readline");
         loop {
-            let message: Message = tokio::select! {
+            let message: Option<Message> = tokio::select! {
                 result = self.voice.recv() => match result {
                     Ok(frame) => {
                         let wav = audio_frame_to_wav(frame);
-                        Audio {
+                        Some(Audio {
                             data: rig_core::message::DocumentSourceKind::Raw(wav),
                             media_type: Some(rig_core::message::AudioMediaType::WAV),
                             additional_params: None,
-                        }.into()
+                        }.into())
                     }
                     Err(err) => {
                         eprintln!("Voice subscriber error: {err}");
+                        self.tx.send(Action::Exit).await.unwrap();
                         break;
                     }
                 },
+                command = readline.readline().fuse() =>match command {
+                    Ok(ReadlineEvent::Line(line)) => {
+                        let line = line.trim();
+                        readline.add_history_entry(line.to_owned());
+                        Some(line.into())
+                    },
+                    Ok(ReadlineEvent::Eof) => { writeln!(stdout, "Exiting...").unwrap(); break },
+                    Ok(ReadlineEvent::Interrupted) => {
+                            writeln!(stdout, "^C").unwrap();
+                            None
+                        }
+                    Err(err) => {
+                        writeln!(stdout, "Received err: {:?}", err).unwrap();
+                        writeln!(stdout, "Exiting...").unwrap();
+                        self.tx.send(Action::Exit).await.unwrap();
+                        break
+                    },
+                }
             };
-            self.llm.ask(message).await;
+
+            if let Some(message) = message {
+                self.llm.ask(&mut stdout, message).await;
+            }
         }
     }
 }

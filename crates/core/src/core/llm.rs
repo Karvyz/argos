@@ -1,14 +1,17 @@
+use std::io::Write;
+
 use comms::Comms;
 use futures::StreamExt;
 use rig_core::{
     agent::{Agent, MultiTurnStreamItem, Text},
     client::CompletionClient,
     memory::InMemoryConversationMemory,
-    message::{Audio, Message},
+    message::Message,
     providers::llamafile::{Client, CompletionModel, LLAMA_CPP},
     streaming::{StreamedAssistantContent, StreamingPrompt},
     tool::Tool,
 };
+use rustyline_async::SharedWriter;
 use serde::Deserialize;
 use serde_json::json;
 use tokio::sync::mpsc::{Sender, error::SendError};
@@ -41,22 +44,20 @@ impl LLM {
             .build()
     }
 
-    pub async fn ask(&self, message: Message) {
+    pub async fn ask(&self, stdout: &mut SharedWriter, message: Message) {
         let mut stream = self.agent.stream_prompt(message).conversation("conv").await;
         while let Some(content) = stream.next().await {
             match content {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
                     Text { text, .. },
                 ))) => {
-                    print!("{text}");
-                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                    writeln!(stdout, "{text}").unwrap();
                 }
                 Ok(MultiTurnStreamItem::StreamAssistantItem(
                     StreamedAssistantContent::Reasoning(reasoning),
                 )) => {
                     let reasoning = reasoning.display_text();
-                    print!("{reasoning}");
-                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                    writeln!(stdout, "{reasoning}").unwrap();
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => println!(),
                 Err(err) => {

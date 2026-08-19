@@ -12,6 +12,7 @@ glam = "0.33.3"
 hound = "3.5.1"
 kokoro-micro = "1.0.1"
 rig-core = "0.40.0"
+rustyline-async = "0.4.9"
 serde = "1.0.229"
 serde_json = "1.0.151"
 tokio = { version = "1", features = ["full"] }
