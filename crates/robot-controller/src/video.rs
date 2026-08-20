@@ -13,13 +13,17 @@ use libcamera::{
     request::ReuseFlag,
     stream::StreamRole,
 };
+use tracing::{error, info, warn};
 
 // drm-fourcc does not have RG24 type yet, construct it from raw fourcc identifier
 const PIXEL_FORMAT_RG24: PixelFormat =
     PixelFormat::new(u32::from_le_bytes([b'R', b'G', b'2', b'4']), 0);
 
 pub async fn run(comms: Comms) -> Result<()> {
-    let publisher = comms.publisher::<CameraFrames>().await?;
+    let publisher = comms
+        .publisher::<CameraFrames>()
+        .await
+        .inspect_err(|error| error!(error = ?error, "failed to create camera publisher"))?;
 
     // libcamera is blocking/callback based, so capture runs on a dedicated thread
     // and forwards encoded frames here. A small bounded channel drops stale frames.
@@ -27,7 +31,10 @@ pub async fn run(comms: Comms) -> Result<()> {
     std::thread::spawn(move || capture_loop(tx));
 
     while let Some(frame) = rx.recv().await {
-        publisher.send(frame).await?;
+        publisher
+            .send(frame)
+            .await
+            .inspect_err(|error| error!(error = ?error, "failed to send camera frame"))?;
     }
     Ok(())
 }
@@ -37,9 +44,9 @@ fn capture_loop(tx: tokio::sync::mpsc::Sender<CameraFrame>) {
     let cameras = mgr.cameras();
     let cam = cameras.get(0).expect("No cameras found");
 
-    println!(
-        "Using camera: {}",
-        *cam.properties().get::<properties::Model>().unwrap()
+    info!(
+        model = %*cam.properties().get::<properties::Model>().unwrap(),
+        "using camera"
     );
 
     let mut cam = cam.acquire().expect("Unable to acquire camera");
@@ -54,7 +61,7 @@ fn capture_loop(tx: tokio::sync::mpsc::Sender<CameraFrame>) {
     match cfgs.validate() {
         CameraConfigurationStatus::Valid => {}
         CameraConfigurationStatus::Adjusted => {
-            println!("Camera configuration was adjusted")
+            warn!("camera configuration was adjusted")
         }
         CameraConfigurationStatus::Invalid => panic!("Error validating camera configuration"),
     }

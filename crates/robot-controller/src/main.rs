@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tracing::error;
 
 mod mic;
 mod motors;
@@ -7,7 +8,16 @@ mod video;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let comms = comms::Comms::open().await?;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,zenoh=warn")),
+        )
+        .init();
+
+    let comms = comms::Comms::open()
+        .await
+        .inspect_err(|error| error!(error = ?error, "failed to open communications"))?;
 
     // One independent task per topic; the comms handle is cheaply cloneable.
     let handles = vec![
@@ -18,8 +28,11 @@ async fn main() -> Result<()> {
     ];
 
     for h in handles {
-        if let Err(e) = h.await? {
-            eprintln!("task error: {e}");
+        if let Err(error) = h
+            .await
+            .inspect_err(|error| error!(error = ?error, "worker task panicked"))?
+        {
+            error!(error = %error, "worker task failed");
         }
     }
     Ok(())
