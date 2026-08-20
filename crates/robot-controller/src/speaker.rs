@@ -8,7 +8,9 @@ use comms::{Comms, topics::SpeakerAudio};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use tracing::{debug, error, info, warn};
 
-pub async fn run(comms: Comms) -> Result<()> {
+use crate::gate::SpeakerGate;
+
+pub async fn run(comms: Comms, gate: Arc<SpeakerGate>) -> Result<()> {
     let subscriber = comms
         .subscriber::<SpeakerAudio>()
         .await
@@ -55,8 +57,14 @@ pub async fn run(comms: Comms) -> Result<()> {
             output_config.clone(),
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 let mut queued = callback_samples.lock().unwrap();
+
+                let mut emitted = false;
                 for sample in data {
                     *sample = queued.pop_front().unwrap_or(0.0);
+                    emitted = emitted || *sample != 0.0;
+                }
+                if emitted {
+                    gate.report_playing();
                 }
             },
             |error| error!("speaker output stream error: {}", error),

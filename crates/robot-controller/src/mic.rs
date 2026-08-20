@@ -2,8 +2,10 @@ use anyhow::Result;
 use comms::{AudioFrame, Comms, topics::Voice};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use earshot::Detector;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use tracing::{debug, error, info};
+
+use crate::gate::SpeakerGate;
 
 const TARGET_SAMPLE_RATE: u32 = 16_000;
 const CHUNK_SIZE: usize = 256;
@@ -138,7 +140,7 @@ fn collapse_channels(interleaved: &[f32], channels: usize) -> Vec<f32> {
     mono
 }
 
-pub async fn run(comms: Comms) -> Result<()> {
+pub async fn run(comms: Comms, gate: Arc<SpeakerGate>) -> Result<()> {
     let publisher = comms
         .publisher::<Voice>()
         .await
@@ -155,6 +157,12 @@ pub async fn run(comms: Comms) -> Result<()> {
             .next_chunk()
             .inspect_err(|error| error!("failed to read audio chunk: {:?}", error))?;
         assert_eq!(chunk.len(), 256);
+
+        if gate.is_muted() {
+            voice_message.clear();
+            chunk_count += 1;
+            continue;
+        }
 
         let score = detector.predict_f32(&chunk);
         // Score is between 0-1; 0 = no voice, 1 = voice.
