@@ -52,14 +52,14 @@ impl AudioStream {
         let num_channels = config.channels() as usize;
         let resample_ratio = device_sample_rate as f32 / TARGET_SAMPLE_RATE as f32;
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
-        let err_fn = |err| error!(error = %err, "audio capture stream error");
+        let err_fn = |err| error!("audio capture stream error: {}", err);
         let stream = device
             .build_input_stream::<f32, _, _>(
                 config.into(),
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     let mono = collapse_channels(data, num_channels);
                     if let Err(error) = tx.send(mono) {
-                        debug!(error = ?error, "audio capture receiver dropped");
+                        debug!("audio capture receiver dropped: {:?}", error);
                     }
                 },
                 err_fn,
@@ -142,21 +142,18 @@ pub async fn run(comms: Comms) -> Result<()> {
     let publisher = comms
         .publisher::<Voice>()
         .await
-        .inspect_err(|error| error!(error = ?error, "failed to create voice publisher"))?;
+        .inspect_err(|error| error!("failed to create voice publisher: {:?}", error))?;
     let mut stream = AudioStream::new()
-        .inspect_err(|error| error!(error = ?error, "failed to create audio stream"))?;
+        .inspect_err(|error| error!("failed to create audio stream: {:?}", error))?;
 
-    info!(
-        sample_rate = TARGET_SAMPLE_RATE,
-        "listening for voice messages"
-    );
+    info!("listening for voice messages at {} Hz", TARGET_SAMPLE_RATE);
     let mut detector = Detector::default();
     let mut voice_message = Vec::new();
     let mut chunk_count = 0;
     loop {
         let chunk = stream
             .next_chunk()
-            .inspect_err(|error| error!(error = ?error, "failed to read audio chunk"))?;
+            .inspect_err(|error| error!("failed to read audio chunk: {:?}", error))?;
         assert_eq!(chunk.len(), 256);
 
         let score = detector.predict_f32(&chunk);
@@ -164,20 +161,20 @@ pub async fn run(comms: Comms) -> Result<()> {
         let is_voice = score >= THRESHOLD;
         let rms = (chunk.iter().map(|&s| s.powi(2)).sum::<f32>() / chunk.len() as f32).sqrt();
         debug!(
-            chunk = chunk_count + 1,
-            len = chunk.len(),
+            "processed audio chunk: chunk={}, len={}, rms={}, first={:?}, last={:?}, voice={}",
+            chunk_count + 1,
+            chunk.len(),
             rms,
-            first = ?chunk.first().unwrap(),
-            last = ?chunk.last().unwrap(),
-            voice = is_voice,
-            "processed audio chunk",
+            chunk.first().unwrap(),
+            chunk.last().unwrap(),
+            is_voice,
         );
 
         if is_voice {
             voice_message.extend(chunk);
         } else if !voice_message.is_empty() {
             let samples = std::mem::take(&mut voice_message);
-            info!(samples = samples.len(), "sending voice message");
+            info!("sending voice message with {} samples", samples.len());
             publisher
                 .send(AudioFrame {
                     sample_rate: TARGET_SAMPLE_RATE,
@@ -185,7 +182,7 @@ pub async fn run(comms: Comms) -> Result<()> {
                     samples,
                 })
                 .await
-                .inspect_err(|error| error!(error = ?error, "failed to send voice message"))?;
+                .inspect_err(|error| error!("failed to send voice message: {:?}", error))?;
         }
 
         chunk_count += 1;

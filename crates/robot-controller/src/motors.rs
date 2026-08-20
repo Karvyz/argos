@@ -7,19 +7,19 @@ pub async fn run(comms: Comms) -> Result<()> {
     let subscriber = comms
         .subscriber::<MotorCommands>()
         .await
-        .inspect_err(|error| error!(error = ?error, "failed to create motor subscriber"))?;
+        .inspect_err(|error| error!("failed to create motor subscriber: {:?}", error))?;
 
-    info!(port = "/dev/ttyAMA0", "initializing motor controller");
+    info!("initializing motor controller on port {}", "/dev/ttyAMA0");
 
     let mut dog = XgoDog::builder()
         .port_name("/dev/ttyAMA0")
         .build()
         .await
-        .inspect_err(|error| error!(error = ?error, "failed to open XGO port"))?;
+        .inspect_err(|error| error!("failed to open XGO port: {:?}", error))?;
 
     dog.load_all_motors()
         .await
-        .inspect_err(|error| error!(error = ?error, "failed to load motors"))?;
+        .inspect_err(|error| error!("failed to load motors: {:?}", error))?;
 
     info!("motor controller ready");
 
@@ -31,14 +31,14 @@ pub async fn run(comms: Comms) -> Result<()> {
                 continue;
             }
             Err(error) => {
-                error!(error = ?error, "failed to receive motor command");
+                error!("failed to receive motor command: {:?}", error);
                 return Err(error.into());
             }
         };
         let cmds: [(Motor, f32); 15] = std::array::from_fn(|i| (Motor::ALL[i], command.angles[i]));
-        debug!(motors = cmds.len(), "received motor command");
+        debug!("received motor command for {} motors", cmds.len());
         dog.motors(&cmds)
             .await
-            .inspect_err(|error| error!(error = ?error, "failed to send motor command"))?;
+            .inspect_err(|error| error!("failed to send motor command: {:?}", error))?;
     }
 }

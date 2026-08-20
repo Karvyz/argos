@@ -23,7 +23,7 @@ pub async fn run(comms: Comms) -> Result<()> {
     let publisher = comms
         .publisher::<CameraFrames>()
         .await
-        .inspect_err(|error| error!(error = ?error, "failed to create camera publisher"))?;
+        .inspect_err(|error| error!("failed to create camera publisher: {:?}", error))?;
 
     // libcamera is blocking/callback based, so capture runs on a dedicated thread
     // and forwards encoded frames here. A small bounded channel drops stale frames.
@@ -34,7 +34,7 @@ pub async fn run(comms: Comms) -> Result<()> {
         publisher
             .send(frame)
             .await
-            .inspect_err(|error| error!(error = ?error, "failed to send camera frame"))?;
+            .inspect_err(|error| error!("failed to send camera frame: {:?}", error))?;
     }
     Ok(())
 }
@@ -45,8 +45,8 @@ fn capture_loop(tx: tokio::sync::mpsc::Sender<CameraFrame>) {
     let cam = cameras.get(0).expect("No cameras found");
 
     info!(
-        model = %*cam.properties().get::<properties::Model>().unwrap(),
-        "using camera"
+        "using camera {}",
+        *cam.properties().get::<properties::Model>().unwrap()
     );
 
     let mut cam = cam.acquire().expect("Unable to acquire camera");

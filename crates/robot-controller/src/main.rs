@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let comms = comms::Comms::open()
         .await
-        .inspect_err(|error| error!(error = ?error, "failed to open communications"))?;
+        .inspect_err(|error| error!("failed to open communications: {:?}", error))?;
 
     // One independent task per topic; the comms handle is cheaply cloneable.
     let handles = vec![
@@ -30,9 +30,9 @@ async fn main() -> Result<()> {
     for h in handles {
         if let Err(error) = h
             .await
-            .inspect_err(|error| error!(error = ?error, "worker task panicked"))?
+            .inspect_err(|error| error!("worker task panicked: {:?}", error))?
         {
-            error!(error = %error, "worker task failed");
+            error!("worker task failed: {}", error);
         }
     }
     Ok(())
