@@ -15,13 +15,20 @@ pub async fn run(comms: Comms) -> Result<()> {
         .inspect_err(|error| error!("failed to create speaker subscriber: {:?}", error))?;
 
     let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or_else(|| anyhow::anyhow!("no output device available"))?;
+    let device = host.default_output_device();
+    if device.is_none() {
+        error!("no output device available");
+        return Err(anyhow::anyhow!("no output device available"));
+    }
+    let device = device.unwrap();
     let supported_config = device
         .default_output_config()
         .inspect_err(|error| error!("failed to get speaker output config: {:?}", error))?;
     if supported_config.sample_format() != cpal::SampleFormat::F32 {
+        error!(
+            "unsupported output sample format: {:?}; expected f32",
+            supported_config.sample_format()
+        );
         return Err(anyhow::anyhow!(
             "unsupported output sample format: {:?}; expected f32",
             supported_config.sample_format()
@@ -30,9 +37,13 @@ pub async fn run(comms: Comms) -> Result<()> {
 
     let output_config: cpal::StreamConfig = supported_config.into();
     let output_sample_rate = output_config.sample_rate;
-    if output_config.channels != 1 {
+    if output_config.channels != 2 {
+        error!(
+            "unsupported output channel count: {}; expected stereo",
+            output_config.channels
+        );
         return Err(anyhow::anyhow!(
-            "unsupported output channel count: {}; expected mono",
+            "unsupported output channel count: {}; expected stereo",
             output_config.channels
         ));
     }
@@ -76,28 +87,63 @@ pub async fn run(comms: Comms) -> Result<()> {
             continue;
         }
 
-        if frame.channels != 1 {
+        // Output is stereo, so accept mono or stereo input and convert as needed.
+        let mut pending = frame.samples;
+        if frame.channels == 1 {
+            // Convert mono samples into interleaved stereo by duplicating each sample.
+            let mut stereo = Vec::<f32>::with_capacity(pending.len() * 2);
+            for sample in pending {
+                stereo.push(sample);
+                stereo.push(sample);
+            }
+            pending = stereo;
+        } else if frame.channels != 2 {
             warn!(
-                "unsupported speaker frame channel count: {}; expected mono",
+                "unsupported speaker frame channel count: {}; expected mono or stereo",
                 frame.channels
             );
             continue;
         }
         if frame.sample_rate != output_sample_rate {
-            warn!(
-                "speaker frame sample rate {} does not match output device sample rate {}",
-                frame.sample_rate, output_sample_rate
-            );
-            continue;
+            pending = resample(pending, 2, frame.sample_rate, output_sample_rate);
         }
 
         info!(
             "queueing speaker audio: samples={}, channels={}, sample_rate={}",
-            frame.samples.len(),
+            pending.len(),
             frame.channels,
             frame.sample_rate,
         );
 
-        samples.lock().unwrap().extend(frame.samples);
+        samples.lock().unwrap().extend(pending);
     }
+}
+
+/// Resample interleaved audio from one sample rate to another using linear
+/// interpolation between frames. Each frame holds `channels` interleaved samples.
+fn resample(interleaved: Vec<f32>, channels: usize, from_rate: u32, to_rate: u32) -> Vec<f32> {
+    if from_rate == to_rate {
+        return interleaved;
+    }
+
+    let ratio = to_rate as f32 / from_rate as f32;
+    let frames_in = interleaved.len() / channels;
+    let frames_out = (frames_in as f32 * ratio).ceil() as usize;
+    let mut out = Vec::<f32>::with_capacity(frames_out * channels);
+
+    for frame in 0..frames_out {
+        let pos = frame as f32 / ratio;
+        let idx = pos as usize;
+        let frac = pos - idx as f32;
+        for ch in 0..channels {
+            let a = interleaved[idx * channels + ch];
+            let b = if idx + 1 < frames_in {
+                interleaved[(idx + 1) * channels + ch]
+            } else {
+                a
+            };
+            out.push(a + (b - a) * frac);
+        }
+    }
+    out
 }
